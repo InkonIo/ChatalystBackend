@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import jakarta.annotation.PostConstruct; // Импортируем PostConstruct
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -23,22 +23,14 @@ public class OpenAIService {
     @Value("${openai.model}")
     private String openaiModel;
 
-    private WebClient webClient; // Удаляем final
+    @Qualifier("openAiWebClient") // Указываем, какой именно WebClient инжектировать
+    private final WebClient openAiWebClient; // <-- Инжектированный WebClient
     private final ObjectMapper objectMapper;
 
-    // Конструктор теперь просто инжектирует ObjectMapper
-    public OpenAIService(ObjectMapper objectMapper) {
+    // Конструктор теперь инжектирует WebClient и ObjectMapper
+    public OpenAIService(WebClient openAiWebClient, ObjectMapper objectMapper) {
+        this.openAiWebClient = openAiWebClient;
         this.objectMapper = objectMapper;
-    }
-
-    // Инициализируем WebClient после инжекции @Value полей
-    @PostConstruct
-    public void init() {
-        this.webClient = WebClient.builder()
-                .baseUrl("https://api.openai.com/v1")
-                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + openaiApiKey)
-                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .build();
     }
 
     /**
@@ -74,13 +66,14 @@ public class OpenAIService {
 
         try {
             // Отправляем запрос к OpenAI API
-            Mono<String> responseMono = webClient.post()
-                    .uri("/chat/completions")
+            Mono<String> responseMono = openAiWebClient.post() // <-- Используем инжектированный openAiWebClient
+                    .uri("/chat/completions") // <-- URI без базового хоста
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + openaiApiKey)
                     .bodyValue(requestBody.toString())
                     .retrieve()
                     .bodyToMono(String.class);
 
-            String responseString = responseMono.block(); // Блокирующий вызов (для простоты MVP)
+            String responseString = responseMono.block();
             JsonNode rootNode = objectMapper.readTree(responseString);
             String assistantResponse = rootNode.path("choices").get(0).path("message").path("content").asText();
 
@@ -93,4 +86,3 @@ public class OpenAIService {
         }
     }
 }
-
