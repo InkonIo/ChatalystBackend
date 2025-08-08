@@ -1,5 +1,6 @@
 package com.chatalyst.backend.controller;
 
+import com.chatalyst.backend.dto.BotStats;
 import com.chatalyst.backend.dto.CreateBotRequest;
 import com.chatalyst.backend.dto.MessageResponse;
 import com.chatalyst.backend.dto.UpdateShopNameRequest;
@@ -139,5 +140,25 @@ public class BotController {
         }
     }
 
-    
+        @GetMapping("/stats/{botId}")
+@PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+@Operation(summary = "Получить статистику по боту", description = "Возвращает общее количество сообщений и диалогов для указанного бота. Доступно только владельцу бота.")
+@ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Статистика успешно получена",
+                content = @Content(schema = @Schema(implementation = BotStats.class))),
+        @ApiResponse(responseCode = "400", description = "Ошибка, бот не найден или нет прав доступа",
+                content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+        @ApiResponse(responseCode = "401", description = "Неавторизованный доступ",
+                content = @Content(schema = @Schema(implementation = MessageResponse.class)))
+})
+public ResponseEntity<?> getBotStatistics(@PathVariable Long botId,
+                                           @AuthenticationPrincipal UserPrincipal userPrincipal) {
+    try {
+        BotStats stats = botService.getBotStatistics(botId, userPrincipal.getId());
+        return ResponseEntity.ok(stats);
+    } catch (RuntimeException e) {
+        log.error("Ошибка при получении статистики для бота {}: {}", botId, e.getMessage());
+        return ResponseEntity.badRequest().body(new MessageResponse("Ошибка: " + e.getMessage()));
+    }
 }
+}       

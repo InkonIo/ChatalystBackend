@@ -4,6 +4,8 @@ package com.chatalyst.backend.Repository;
 
 import com.chatalyst.backend.model.ChatMessage;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
@@ -16,4 +18,19 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
      * @return A list of the top 25 ChatMessage objects.
      */
     List<ChatMessage> findTop30ByChatIdAndBotIdentifierOrderByIdDesc(Long chatId, String botIdentifier);
+
+    /**
+     * Counts the total number of messages for a specific bot.
+     * @param botIdentifier The identifier of the bot.
+     * @return The total number of messages.
+     */
+    long countByBotIdentifier(String botIdentifier);
+
+    /**
+     * Counts the number of unique chats (dialogues) for a specific bot.
+     * @param botIdentifier The identifier of the bot.
+     * @return The number of unique chats.
+     */
+    @Query("SELECT COUNT(DISTINCT m.chatId) FROM ChatMessage m WHERE m.botIdentifier = :botIdentifier")
+    long countDistinctChatIdsByBotIdentifier(@Param("botIdentifier") String botIdentifier);
 }

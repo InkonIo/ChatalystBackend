@@ -2,7 +2,9 @@ package com.chatalyst.backend.security.services;
 
 import com.chatalyst.backend.Entity.User;
 import com.chatalyst.backend.Repository.BotRepository;
+import com.chatalyst.backend.Repository.ChatMessageRepository;
 import com.chatalyst.backend.Repository.UserRepository;
+import com.chatalyst.backend.dto.BotStats;
 import com.chatalyst.backend.dto.CreateBotRequest;
 import com.chatalyst.backend.model.Bot;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -34,6 +36,7 @@ public class BotService {
     private final ObjectMapper objectMapper;
     @Qualifier("telegramWebClient")
     private final WebClient telegramWebClient;
+    private final ChatMessageRepository chatMessageRepository;
 
     @Value("${telegram.webhook.base-url}")
     private String telegramWebhookBaseUrl;
@@ -238,8 +241,36 @@ public class BotService {
         }
     }
 
-    public void updateShopName(Long botId, Long id, String shopName) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'updateShopName'");
+    public BotStats getBotStatistics(Long botId, Long userId) {
+    // 1. Находим бота по его ID
+    Bot bot = botRepository.findById(botId)
+            .orElseThrow(() -> new RuntimeException("Бот не найден с ID: " + botId));
+
+    // 2. Проверяем, что пользователь является владельцем этого бота
+    if (!bot.getOwner().getId().equals(userId)) {
+        throw new RuntimeException("У вас нет прав для доступа к статистике этого бота.");
     }
+    
+    // 3. Получаем botIdentifier из найденного бота
+    String botIdentifier = bot.getBotIdentifier();
+
+    // 4. Получаем статистику, используя методы репозитория
+    long totalMessages = chatMessageRepository.countByBotIdentifier(botIdentifier);
+    long totalDialogues = chatMessageRepository.countDistinctChatIdsByBotIdentifier(botIdentifier);
+
+    // 5. Возвращаем DTO со статистикой
+    return new BotStats(totalMessages, totalDialogues);
+}
+
+    public void updateShopName(Long botId, Long userId, String shopName) {
+    Bot bot = botRepository.findById(botId)
+            .orElseThrow(() -> new RuntimeException("Бот не найден с ID: " + botId));
+
+    // Проверяем, что этот бот принадлежит пользователю
+    if (!bot.getOwner().getId().equals(userId)) {
+        throw new RuntimeException("Нет прав на изменение имени магазина этого бота");
+    }
+    bot.setShopName(shopName);
+    botRepository.save(bot);
+}
 }
