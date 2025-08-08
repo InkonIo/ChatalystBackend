@@ -2,6 +2,7 @@ package com.chatalyst.backend.controller;
 
 import com.chatalyst.backend.dto.CreateBotRequest;
 import com.chatalyst.backend.dto.MessageResponse;
+import com.chatalyst.backend.dto.UpdateShopNameRequest;
 import com.chatalyst.backend.model.Bot;
 import com.chatalyst.backend.security.services.BotService;
 import com.chatalyst.backend.security.services.UserPrincipal;
@@ -80,6 +81,37 @@ public class BotController {
     }
 
     /**
+     * Эндпоинт для обновления имени магазина у бота.
+     *
+     * @param botId Идентификатор бота.
+     * @param request Объект с новым именем магазина.
+     * @param userPrincipal Информация об авторизованном пользователе.
+     * @return ResponseEntity с сообщением об успехе.
+     */
+    @PutMapping("/shop-name/{botId}")
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @Operation(summary = "Обновить имя магазина бота", description = "Обновляет имя магазина по ID бота. Только владелец может обновить имя.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Имя магазина успешно обновлено",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Ошибка обновления",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Неавторизованный доступ",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class)))
+    })
+    public ResponseEntity<?> updateShopName(@PathVariable Long botId,
+                                            @Valid @RequestBody UpdateShopNameRequest request,
+                                            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        try {
+            botService.updateShopName(botId, userPrincipal.getId(), request.getShopName());
+            return ResponseEntity.ok(new MessageResponse("Имя магазина успешно обновлено!"));
+        } catch (RuntimeException e) {
+            log.error("Ошибка при обновлении имени магазина для бота {}: {}", botId, e.getMessage());
+            return ResponseEntity.badRequest().body(new MessageResponse("Ошибка: " + e.getMessage()));
+        }
+    }
+
+    /**
      * Удаляет бота по его ID.
      * @param botId ID бота для удаления.
      * @param userPrincipal Информация об авторизованном пользователе.
@@ -106,4 +138,6 @@ public class BotController {
             return ResponseEntity.badRequest().body(new MessageResponse("Ошибка: " + e.getMessage()));
         }
     }
+
+    
 }

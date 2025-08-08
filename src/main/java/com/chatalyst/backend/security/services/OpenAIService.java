@@ -8,10 +8,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+
+import java.util.List;
 
 @Service
 @Slf4j
@@ -23,51 +24,101 @@ public class OpenAIService {
     @Value("${openai.model}")
     private String openaiModel;
 
-    @Qualifier("openAiWebClient") // Указываем, какой именно WebClient инжектировать
-    private final WebClient openAiWebClient; // <-- Инжектированный WebClient
+    @Qualifier("openAiWebClient")
+    private final WebClient openAiWebClient;
     private final ObjectMapper objectMapper;
 
-    // Конструктор теперь инжектирует WebClient и ObjectMapper
     public OpenAIService(WebClient openAiWebClient, ObjectMapper objectMapper) {
         this.openAiWebClient = openAiWebClient;
         this.objectMapper = objectMapper;
     }
 
     /**
-     * Отправляет запрос на Chat Completion API OpenAI и возвращает ответ.
-     * @param userMessage Сообщение пользователя.
-     * @param productCatalogPrompt Часть промпта с информацией о товарах (пока заглушка, позже будет из БД).
-     * @return Ответ от OpenAI.
+     * Умный ответ с учетом истории сообщений и информации о товарах.
+     * @param conversationHistory История диалога в формате List {"user", "привет"}, {"assistant", "чем могу помочь?"} и т.д.
+     * @param productCatalogInfo Информация о товарах.
+     * @param shopName Название магазина.
+     * @return Ответ от AI.
      */
-    public String getChatCompletion(String userMessage, String productCatalogPrompt) {
-        // Создаем системный промпт, который будет содержать информацию о товарах
-        String systemPrompt = "Ты AI-продавец для магазина Chatalyst. Отвечай на вопросы клиентов о товарах. " +
-                              "Используй следующую информацию о товарах: " + productCatalogPrompt +
-                              "Если информации о товаре нет, вежливо сообщи, что не можешь ответить на этот вопрос.";
+public String getBotResponse(List<String[]> chatHistory, String productCatalogInfo, String shopName) {
+    ArrayNode messages = objectMapper.createArrayNode();
 
-        ObjectNode message1 = objectMapper.createObjectNode();
-        message1.put("role", "system");
-        message1.put("content", systemPrompt);
+    // Системное сообщение: инструкция для ассистента
+    ObjectNode systemMessage = objectMapper.createObjectNode();
+    systemMessage.put("role", "system");
+    systemMessage.put("content",
+        "Ты — умный Telegram-бот-консультант, который помогает пользователю найти товары в магазине \"" + shopName + "\". " +
+        "Вот информация из каталога: " + productCatalogInfo + ". " +
+        "Отвечай кратко и по делу, если пользователь что-то просит — предлагай товары по смыслу. " +
+        "Ты можешь догадываться, что он имеет в виду, даже если формулировка не точная. " +
+        "Не выдумывай товары — только из каталога. Если ничего не найдено — мягко скажи об этом."
+    );
+    messages.add(systemMessage);
 
-        ObjectNode message2 = objectMapper.createObjectNode();
-        message2.put("role", "user");
-        message2.put("content", userMessage);
+    // Добавляем историю сообщений (роль: user / assistant)
+    for (String[] msg : chatHistory) {
+        ObjectNode messageNode = objectMapper.createObjectNode();
+        messageNode.put("role", msg[0]);
+        messageNode.put("content", msg[1]);
+        messages.add(messageNode);
+    }
 
-        ArrayNode messages = objectMapper.createArrayNode();
-        messages.add(message1);
-        messages.add(message2);
+    // Собираем JSON-запрос
+    ObjectNode requestBody = objectMapper.createObjectNode();
+    requestBody.put("model", openaiModel);
+    requestBody.set("messages", messages);
+    requestBody.put("temperature", 0.7);
 
-        ObjectNode requestBody = objectMapper.createObjectNode();
-        requestBody.put("model", openaiModel);
-        requestBody.set("messages", messages);
-        requestBody.put("temperature", 0.7); // Настройка креативности ответа
+    log.info("⏳ Sending OpenAI request with context. Last user msg: {}", chatHistory.get(chatHistory.size() - 1)[1]);
 
-        log.info("Sending OpenAI request for user message: {}", userMessage);
+    try {
+        String responseString = openAiWebClient.post()
+                .uri("/chat/completions")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + openaiApiKey)
+                .bodyValue(requestBody.toString())
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
 
+        JsonNode rootNode = objectMapper.readTree(responseString);
+        String assistantResponse = rootNode.path("choices").get(0).path("message").path("content").asText();
+
+        log.info("✅ AI response: {}", assistantResponse);
+        return assistantResponse;
+
+    } catch (Exception e) {
+        log.error("❌ OpenAI error: {}", e.getMessage(), e);
+        return "Извините, произошла ошибка при обработке вашего запроса. Попробуйте позже.";
+    }
+}
+
+
+    /**
+     * Простой ответ без каталога и истории (например, для общего чата).
+     */
+    public String getBotResponse(String userMessage) {
         try {
-            // Отправляем запрос к OpenAI API
-            Mono<String> responseMono = openAiWebClient.post() // <-- Используем инжектированный openAiWebClient
-                    .uri("/chat/completions") // <-- URI без базового хоста
+            ArrayNode messages = objectMapper.createArrayNode();
+
+            ObjectNode systemMessage = objectMapper.createObjectNode();
+            systemMessage.put("role", "system");
+            systemMessage.put("content", "Ты — вежливый помощник Telegram-бота. Отвечай понятно и дружелюбно.");
+            messages.add(systemMessage);
+
+            ObjectNode userMsg = objectMapper.createObjectNode();
+            userMsg.put("role", "user");
+            userMsg.put("content", userMessage);
+            messages.add(userMsg);
+
+            ObjectNode requestBody = objectMapper.createObjectNode();
+            requestBody.put("model", openaiModel);
+            requestBody.set("messages", messages);
+            requestBody.put("temperature", 0.7);
+
+            log.info("Sending OpenAI request (simple message): {}", userMessage);
+
+            Mono<String> responseMono = openAiWebClient.post()
+                    .uri("/chat/completions")
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + openaiApiKey)
                     .bodyValue(requestBody.toString())
                     .retrieve()
@@ -77,12 +128,12 @@ public class OpenAIService {
             JsonNode rootNode = objectMapper.readTree(responseString);
             String assistantResponse = rootNode.path("choices").get(0).path("message").path("content").asText();
 
-            log.info("Received OpenAI response: {}", assistantResponse);
+            log.info("Received simple OpenAI response: {}", assistantResponse);
             return assistantResponse;
 
         } catch (Exception e) {
-            log.error("Error calling OpenAI API: {}", e.getMessage(), e);
-            return "Извините, произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте позже.";
+            log.error("Error calling OpenAI API (simple): {}", e.getMessage(), e);
+            return "Извините, произошла ошибка при обработке вашего запроса.";
         }
     }
 }

@@ -1,12 +1,8 @@
+// src/main/java/com/chatalyst/backend/controller/TelegramWebhookController.java
 package com.chatalyst.backend.controller;
-
 
 import com.chatalyst.backend.security.services.TelegramService;
 import com.fasterxml.jackson.databind.JsonNode;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -16,26 +12,29 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/telegram")
 @RequiredArgsConstructor
 @Slf4j
-@Tag(name = "Telegram Webhook", description = "Endpoints for Telegram bot webhook integration")
+@CrossOrigin(origins = "*", maxAge = 3600)
 public class TelegramWebhookController {
 
     private final TelegramService telegramService;
 
     /**
-     * Эндпоинт для приема входящих обновлений от Telegram.
-     * Telegram будет отправлять сюда POST-запросы при каждом новом сообщении или другом событии.
-     * @param updateJson JSON-объект, содержащий информацию об обновлении.
-     * @return HTTP 200 OK, чтобы Telegram знал, что обновление обработано.
+     * Эндпоинт для обработки входящих вебхуков от Telegram.
+     * Telegram будет отправлять обновления на URL вида:
+     * https://ВАШ_NGROK_URL/api/telegram/webhook/ИДЕНТИФИКАТОР_БОТА
+     * @param botIdentifier Идентификатор бота (username) из URL.
+     * @param updateJson JSON-объект входящего обновления от Telegram.
+     * @return ResponseEntity с пустым ответом (Telegram ожидает 200 OK).
      */
-    @PostMapping("/webhook")
-    @Operation(summary = "Receive Telegram webhook updates", description = "This endpoint receives all updates from Telegram bot API.")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Update processed successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid request payload")
-    })
-    public ResponseEntity<Void> handleTelegramWebhook(@RequestBody JsonNode updateJson) {
-        log.info("Received Telegram webhook. Processing update...");
-        telegramService.processUpdate(updateJson);
-        return ResponseEntity.ok().build(); // Всегда возвращаем 200 OK, чтобы Telegram не повторял отправку
+    @PostMapping("/webhook/{botIdentifier}") // ИЗМЕНЕНО: теперь принимает botIdentifier из пути
+    public ResponseEntity<?> handleTelegramWebhook(@PathVariable String botIdentifier, @RequestBody JsonNode updateJson) {
+        log.info("Received webhook for bot {}: {}", botIdentifier, updateJson.toString());
+        try {
+            telegramService.processUpdate(botIdentifier, updateJson); // Передаем botIdentifier в сервис
+            return ResponseEntity.ok().build(); // Telegram ожидает 200 OK
+        } catch (Exception e) {
+            log.error("Error processing Telegram webhook for bot {}: {}", botIdentifier, e.getMessage(), e);
+            // Возвращаем 200 OK, даже если произошла ошибка, чтобы Telegram не пытался повторно отправлять
+            return ResponseEntity.ok().build();
+        }
     }
 }

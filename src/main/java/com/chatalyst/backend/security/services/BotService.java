@@ -8,7 +8,6 @@ import com.chatalyst.backend.model.Bot;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -33,7 +32,7 @@ public class BotService {
     private final BotRepository botRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
-    @Qualifier("telegramWebClient") // Указываем, какой именно WebClient инжектировать
+    @Qualifier("telegramWebClient")
     private final WebClient telegramWebClient;
 
     @Value("${telegram.webhook.base-url}")
@@ -94,7 +93,8 @@ public class BotService {
         log.info("Валидация токена Telegram бота: {}", token);
         try {
             Mono<String> responseMono = telegramWebClient.get()
-                    .uri("https://api.telegram.org/bot" + token + "/getMe") // Используем токен напрямую в URI
+                    // ИЗМЕНЕНИЕ: Используем относительный URI, так как базовый URL уже настроен в WebClientConfig
+                    .uri(String.format("/bot%s/getMe", token))
                     .retrieve()
                     .bodyToMono(String.class);
 
@@ -151,7 +151,8 @@ public class BotService {
 
         try {
             Mono<String> responseMono = telegramWebClient.post()
-                    .uri("https://api.telegram.org/bot" + botToken + "/setWebhook") // Используем токен напрямую в URI
+                    // ИЗМЕНЕНИЕ: Используем относительный URI
+                    .uri(String.format("/bot%s/setWebhook", botToken))
                     .bodyValue(requestBody.toString())
                     .retrieve()
                     .bodyToMono(String.class);
@@ -203,20 +204,24 @@ public class BotService {
         if (!bot.getOwner().getId().equals(userId)) {
             throw new RuntimeException("У вас нет прав для удаления этого бота.");
         }
-
-        // Опционально: можно сначала удалить вебхук из Telegram
-        // deleteTelegramWebhook(bot.getAccessToken());
+        
+        // ИЗМЕНЕНИЕ: Удаляем Webhook из Telegram перед удалением бота из БД
+        deleteTelegramWebhook(bot.getAccessToken());
 
         botRepository.delete(bot);
         log.info("Бот с ID {} успешно удален.", botId);
     }
 
-    // Метод для удаления вебхука (пока не используется, но может пригодиться)
+    /**
+     * Метод для удаления вебхука.
+     * @param botToken Токен Telegram бота.
+     */
     private void deleteTelegramWebhook(String botToken) {
         log.info("Удаление Webhook для бота с токеном: {}", botToken);
         try {
             Mono<String> responseMono = telegramWebClient.post()
-                    .uri("bot" + botToken + "/deleteWebhook")
+                    // ИЗМЕНЕНИЕ: Используем относительный URI
+                    .uri(String.format("/bot%s/deleteWebhook", botToken))
                     .retrieve()
                     .bodyToMono(String.class);
 
@@ -231,5 +236,10 @@ public class BotService {
         } catch (Exception e) {
             log.error("Ошибка при удалении Webhook: {}", e.getMessage(), e);
         }
+    }
+
+    public void updateShopName(Long botId, Long id, String shopName) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'updateShopName'");
     }
 }
