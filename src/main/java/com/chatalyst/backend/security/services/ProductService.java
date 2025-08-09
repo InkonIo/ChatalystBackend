@@ -26,7 +26,8 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final BotRepository botRepository;
-    private final UserRepository userRepository; // Для проверки владельца
+    private final UserRepository userRepository;
+    private final PsObjectStorageService psObjectStorageService; // Изменено: используем PsObjectStorageService
 
     /**
      * Создает новый товар и привязывает его к указанному боту.
@@ -38,6 +39,7 @@ public class ProductService {
     public ProductResponse createProduct(CreateProductRequest request, Long userId) {
         Bot bot = botRepository.findById(request.getBotId())
                 .orElseThrow(() -> new RuntimeException("Бот не найден с ID: " + request.getBotId()));
+        
         // Проверка прав
         if (!bot.getOwner().getId().equals(userId)) {
             throw new RuntimeException("У вас нет прав для добавления товаров в этого бота.");
@@ -49,11 +51,13 @@ public class ProductService {
         product.setDescription(request.getDescription());
         product.setCatalog(request.getCatalog());
         product.setSubcategory(request.getSubcategory());
-        product.setImageUrl(request.getImageUrl());
+        product.setImageUrl(request.getImageUrl()); // URL изображения уже загружен в контроллере
         product.setInStock(request.isInStock());
         product.setBot(bot);
 
         Product savedProduct = productRepository.save(product);
+        log.info("Товар создан: {} для бота {}", savedProduct.getName(), bot.getBotIdentifier());
+        
         return convertToResponse(savedProduct);
     }
 
@@ -75,24 +79,35 @@ public class ProductService {
             throw new RuntimeException("У вас нет прав для обновления этого товара.");
         }
 
+        // Сохраняем старый URL изображения для возможного удаления
+        String oldImageUrl = product.getImageUrl();
+
         Optional.ofNullable(request.getName()).ifPresent(product::setName);
         Optional.ofNullable(request.getPrice()).ifPresent(product::setPrice);
         Optional.ofNullable(request.getDescription()).ifPresent(product::setDescription);
         Optional.ofNullable(request.getCatalog()).ifPresent(product::setCatalog);
         Optional.ofNullable(request.getSubcategory()).ifPresent(product::setSubcategory);
-        Optional.ofNullable(request.getImageUrl()).ifPresent(product::setImageUrl);
-        product.setInStock(request.isInStock()); // Обновляем статус наличия
+        
+        // Обновляем URL изображения (может быть null для удаления)
+        if (request.getImageUrl() != null) {
+            product.setImageUrl(request.getImageUrl());
+        }
+        
+        product.setInStock(request.isInStock());
 
         Product updatedProduct = productRepository.save(product);
+        log.info("Товар обновлен: {} для бота {}", updatedProduct.getName(), product.getBot().getBotIdentifier());
+        
         return convertToResponse(updatedProduct);
     }
 
     /**
-     * Удаляет товар.
+     * Удаляет товар и его изображение.
      * @param productId ID товара для удаления.
      * @param userId ID пользователя, удаляющего товар (для проверки прав).
      * @throws RuntimeException если товар не найден или пользователь не является владельцем бота.
      */
+    @Transactional
     public void deleteProduct(Long productId, Long userId) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new RuntimeException("Товар не найден с ID: " + productId));
@@ -101,7 +116,19 @@ public class ProductService {
             throw new RuntimeException("У вас нет прав для удаления этого товара.");
         }
 
+        // Удаляем изображение из PS.kz Object Storage, если оно есть
+        String imageUrl = product.getImageUrl();
+        if (imageUrl != null && !imageUrl.isEmpty()) {
+            boolean deleted = psObjectStorageService.deleteImage(imageUrl); // Изменено: используем PsObjectStorageService
+            if (deleted) {
+                log.info("Изображение товара удалено из PS.kz Object Storage: {}", imageUrl);
+            } else {
+                log.warn("Не удалось удалить изображение товара из PS.kz Object Storage: {}", imageUrl);
+            }
+        }
+
         productRepository.delete(product);
+        log.info("Товар удален: {} (ID: {})", product.getName(), productId);
     }
 
     /**
@@ -174,7 +201,7 @@ public class ProductService {
 
     /**
      * Находит товар по имени и боту, который есть в наличии.
-     * @param bot ID бота.
+     * @param bot Объект бота.
      * @param productName Название товара.
      * @return Optional с товаром.
      */
@@ -182,6 +209,16 @@ public class ProductService {
         return productRepository.findByNameAndBotAndInStock(productName, bot, true);
     }
 
+    /**
+     * Получает список товаров с изображениями для бота.
+     * @param bot Объект бота.
+     * @return Список товаров, у которых есть изображения.
+     */
+    public List<Product> getProductsWithImages(Bot bot) {
+        return productRepository.findByBot(bot).stream()
+                .filter(product -> product.getImageUrl() != null && !product.getImageUrl().isEmpty())
+                .collect(Collectors.toList());
+    }
 
     /**
      * Вспомогательный метод для преобразования сущности Product в DTO ProductResponse.
@@ -202,3 +239,5 @@ public class ProductService {
         return response;
     }
 }
+
+

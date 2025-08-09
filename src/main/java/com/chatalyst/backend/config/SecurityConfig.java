@@ -67,7 +67,7 @@ public class SecurityConfig {
                     auth.requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/telegram/webhook/**").permitAll() // ИЗМЕНЕНО: Разрешить доступ ко всем путям под /api/telegram/webhook/
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/api-docs/**").permitAll()
-                        .requestMatchers("/api/token-usage/**").permitAll() 
+                        .requestMatchers("/api/token-usage/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated()

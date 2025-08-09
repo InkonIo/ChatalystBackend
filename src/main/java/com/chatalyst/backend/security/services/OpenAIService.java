@@ -1,3 +1,4 @@
+// src/main/java/com/chatalyst/backend/security/services/OpenAIService.java
 package com.chatalyst.backend.security.services;
 
 import com.chatalyst.backend.Repository.OpenAITokenUsageRepository;
@@ -45,12 +46,11 @@ public class OpenAIService {
 
     /**
      * Умный ответ с учетом истории сообщений и информации о товарах.
-     *
-     * @param conversationHistory История диалога в формате List {"user", "привет"}, {"assistant", "чем могу помочь?"} и т.д.
-     * @param productCatalogInfo  Информация о товарах.
-     * @param shopName            Название магазина.
-     * @param botIdentifier       Идентификатор бота.
-     * @param chatId              ID чата для сохранения статистики.
+     * @param conversationHistory История диалога.
+     * @param productCatalogInfo Информация о товарах.
+     * @param shopName Название магазина.
+     * @param botIdentifier Идентификатор бота.
+     * @param chatId ID чата для сохранения статистики.
      * @return Ответ от AI.
      */
     public String getBotResponse(List<String[]> chatHistory, String productCatalogInfo, String shopName, String botIdentifier, Long chatId) {
@@ -76,13 +76,60 @@ public class OpenAIService {
             messages.add(messageNode);
         }
 
-        // Собираем JSON-запрос
+        return callOpenAI(messages, botIdentifier, chatId);
+    }
+
+    /**
+     * Улучшенный метод для ответа с поддержкой изображений товаров.
+     * @param chatHistory История диалога.
+     * @param productCatalogInfo Информация о товарах с URL изображений.
+     * @param shopName Название магазина.
+     * @param botIdentifier Идентификатор бота.
+     * @param chatId ID чата.
+     * @return Ответ от AI с указаниями о товарах для показа.
+     */
+    public String getBotResponseWithImageSupport(List<String[]> chatHistory, String productCatalogInfo, String shopName, String botIdentifier, Long chatId) {
+        ArrayNode messages = objectMapper.createArrayNode();
+
+        // Расширенное системное сообщение с инструкциями по изображениям
+        ObjectNode systemMessage = objectMapper.createObjectNode();
+        systemMessage.put("role", "system");
+        systemMessage.put("content",
+                "Ты — умный Telegram-бот-консультант, который помогает пользователю найти товары в магазине \"" + shopName + "\". " +
+                        "Вот информация из каталога: " + productCatalogInfo + ". " +
+                        "Отвечай кратко и по делу, если пользователь что-то просит — предлагай товары по смыслу. " +
+                        "Ты можешь догадываться, что он имеет в виду, даже если формулировка не точная. " +
+                        "Не выдумывай товары — только из каталога. Если ничего не найдено — мягко скажи об этом. " +
+                        "Когда рекомендуешь товары, упоминай их точные названия в своем ответе — это поможет системе автоматически показать изображения товаров пользователю. " +
+                        "Если у товара есть изображение (отмечено как [ИЗОБРАЖЕНИЕ: URL]), то при упоминании этого товара пользователь увидит его фото."
+        );
+        messages.add(systemMessage);
+
+        // Добавляем историю сообщений
+        for (String[] msg : chatHistory) {
+            ObjectNode messageNode = objectMapper.createObjectNode();
+            messageNode.put("role", msg[0]);
+            messageNode.put("content", msg[1]);
+            messages.add(messageNode);
+        }
+
+        return callOpenAI(messages, botIdentifier, chatId);
+    }
+
+    /**
+     * Общий метод для вызова OpenAI API.
+     * @param messages Массив сообщений для отправки.
+     * @param botIdentifier Идентификатор бота.
+     * @param chatId ID чата.
+     * @return Ответ от AI.
+     */
+    private String callOpenAI(ArrayNode messages, String botIdentifier, Long chatId) {
         ObjectNode requestBody = objectMapper.createObjectNode();
         requestBody.put("model", openaiModel);
         requestBody.set("messages", messages);
         requestBody.put("temperature", 0.7);
 
-        log.info("⏳ Sending OpenAI request with context. Last user msg: {}", chatHistory.get(chatHistory.size() - 1)[1]);
+        log.info("⏳ Sending OpenAI request with context for bot: {}", botIdentifier);
 
         try {
             String responseString = openAiWebClient.post()
@@ -98,29 +145,8 @@ public class OpenAIService {
 
             // Извлекаем информацию об использовании токенов и сохраняем ее
             JsonNode usageNode = rootNode.path("usage");
-            if (usageNode.isObject()) {
-                int promptTokens = usageNode.path("prompt_tokens").asInt();
-                int completionTokens = usageNode.path("completion_tokens").asInt();
-                int totalTokens = usageNode.path("total_tokens").asInt();
-
-                double usdCost = (promptTokens / 1000.0) * USD_PER_1K_PROMPT_TOKENS +
-                        (completionTokens / 1000.0) * USD_PER_1K_COMPLETION_TOKENS;
-                double kztCost = usdCost * KZT_EXCHANGE_RATE;
-
-                OpenAITokenUsage tokenUsage = OpenAITokenUsage.builder()
-                        .botIdentifier(botIdentifier)
-                        .chatId(chatId)
-                        .promptTokens(promptTokens)
-                        .completionTokens(completionTokens)
-                        .totalTokens(totalTokens)
-                        .usdCost(usdCost)
-                        .kztCost(kztCost)
-                        .timestamp(LocalDateTime.now())
-                        .build();
-
-                tokenUsageRepository.save(tokenUsage);
-                log.info("📊 Saved token usage for bot {}: prompt={} completion={} cost=${:.6f} (₸{:.2f})",
-                        botIdentifier, promptTokens, completionTokens, usdCost, kztCost);
+            if (usageNode.isObject() && botIdentifier != null && chatId != null) {
+                saveTokenUsage(usageNode, botIdentifier, chatId);
             }
 
             log.info("✅ AI response: {}", assistantResponse);
@@ -132,6 +158,36 @@ public class OpenAIService {
         }
     }
 
+    /**
+     * Сохраняет статистику использования токенов.
+     * @param usageNode Узел с информацией об использовании токенов.
+     * @param botIdentifier Идентификатор бота.
+     * @param chatId ID чата.
+     */
+    private void saveTokenUsage(JsonNode usageNode, String botIdentifier, Long chatId) {
+        int promptTokens = usageNode.path("prompt_tokens").asInt();
+        int completionTokens = usageNode.path("completion_tokens").asInt();
+        int totalTokens = usageNode.path("total_tokens").asInt();
+
+        double usdCost = (promptTokens / 1000.0) * USD_PER_1K_PROMPT_TOKENS +
+                (completionTokens / 1000.0) * USD_PER_1K_COMPLETION_TOKENS;
+        double kztCost = usdCost * KZT_EXCHANGE_RATE;
+
+        OpenAITokenUsage tokenUsage = OpenAITokenUsage.builder()
+                .botIdentifier(botIdentifier)
+                .chatId(chatId)
+                .promptTokens(promptTokens)
+                .completionTokens(completionTokens)
+                .totalTokens(totalTokens)
+                .usdCost(usdCost)
+                .kztCost(kztCost)
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        tokenUsageRepository.save(tokenUsage);
+        log.info("📊 Saved token usage for bot {}: prompt={} completion={} cost=${:.6f} (₸{:.2f})",
+                botIdentifier, promptTokens, completionTokens, usdCost, kztCost);
+    }
 
     /**
      * Простой ответ без каталога и истории (например, для общего чата).
@@ -150,26 +206,7 @@ public class OpenAIService {
             userMsg.put("content", userMessage);
             messages.add(userMsg);
 
-            ObjectNode requestBody = objectMapper.createObjectNode();
-            requestBody.put("model", openaiModel);
-            requestBody.set("messages", messages);
-            requestBody.put("temperature", 0.7);
-
-            log.info("Sending OpenAI request (simple message): {}", userMessage);
-
-            Mono<String> responseMono = openAiWebClient.post()
-                    .uri("/chat/completions")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + openaiApiKey)
-                    .bodyValue(requestBody.toString())
-                    .retrieve()
-                    .bodyToMono(String.class);
-
-            String responseString = responseMono.block();
-            JsonNode rootNode = objectMapper.readTree(responseString);
-            String assistantResponse = rootNode.path("choices").get(0).path("message").path("content").asText();
-
-            log.info("Received simple OpenAI response: {}", assistantResponse);
-            return assistantResponse;
+            return callOpenAI(messages, null, null);
 
         } catch (Exception e) {
             log.error("Error calling OpenAI API (simple): {}", e.getMessage(), e);
@@ -177,3 +214,5 @@ public class OpenAIService {
         }
     }
 }
+
+

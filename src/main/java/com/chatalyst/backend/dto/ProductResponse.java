@@ -2,17 +2,26 @@
 package com.chatalyst.backend.dto;
 
 import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+
 import java.math.BigDecimal;
 
+/**
+ * DTO для ответа с информацией о товаре.
+ */
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class ProductResponse {
     private Long id;
     private String name;
     private BigDecimal price;
     private String description;
-    private String catalog; // Каталог товара
-    private String subcategory; // Подкаталог товара
-    private String imageUrl;
-    private boolean inStock; // Статус наличия товара
-    private Long botId; // ID бота, к которому принадлежит товар
+    private String catalog;
+    private String subcategory;
+    private String imageUrl; // URL изображения товара
+    private boolean inStock;
+    private Long botId;
 }
+
