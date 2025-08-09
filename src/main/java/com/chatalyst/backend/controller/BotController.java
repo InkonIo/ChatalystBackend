@@ -3,6 +3,7 @@ package com.chatalyst.backend.controller;
 import com.chatalyst.backend.dto.BotStats;
 import com.chatalyst.backend.dto.CreateBotRequest;
 import com.chatalyst.backend.dto.MessageResponse;
+import com.chatalyst.backend.dto.UpdateBotRequest;
 import com.chatalyst.backend.dto.UpdateShopNameRequest;
 import com.chatalyst.backend.model.Bot;
 import com.chatalyst.backend.security.services.BotService;
@@ -136,6 +137,40 @@ public class BotController {
             return ResponseEntity.ok(new MessageResponse("Бот успешно удален!"));
         } catch (RuntimeException e) {
             log.error("Ошибка при удалении бота {}: {}", botId, e.getMessage());
+            return ResponseEntity.badRequest().body(new MessageResponse("Ошибка: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * PUT-метод для обновления существующего бота.
+     * @param botId Идентификатор бота, который нужно обновить.
+     * @param updateBotRequest Тело запроса с обновленными данными.
+     * @param userPrincipal Информация об авторизованном пользователе.
+     * @return ResponseEntity с обновленным объектом бота или сообщением об ошибке.
+     */
+    @PutMapping("/{botId}")
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @Operation(summary = "Обновить существующего AI-бота", description = "Обновляет данные существующего бота. Доступно только владельцу бота.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Бот успешно обновлен",
+                    content = @Content(schema = @Schema(implementation = Bot.class))),
+            @ApiResponse(responseCode = "400", description = "Ошибка, бот не найден или нет прав доступа",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Неавторизованный доступ",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class)))
+    })
+    public ResponseEntity<?> updateBot(@PathVariable Long botId,
+                                       @Valid @RequestBody UpdateBotRequest updateBotRequest,
+                                       @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        try {
+            // Добавлена проверка на null, чтобы избежать NullPointerException
+            if (userPrincipal == null || userPrincipal.getId() == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageResponse("Пользователь не авторизован."));
+            }
+            Bot updatedBot = botService.updateBot(botId, userPrincipal.getId(), updateBotRequest);
+            return ResponseEntity.ok(updatedBot);
+        } catch (RuntimeException e) {
+            log.error("Ошибка при обновлении бота {}: {}", botId, e.getMessage());
             return ResponseEntity.badRequest().body(new MessageResponse("Ошибка: " + e.getMessage()));
         }
     }

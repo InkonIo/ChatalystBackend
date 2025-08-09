@@ -4,6 +4,7 @@ import com.chatalyst.backend.Entity.User;
 import com.chatalyst.backend.Repository.BotRepository;
 import com.chatalyst.backend.Repository.ChatMessageRepository;
 import com.chatalyst.backend.Repository.UserRepository;
+import com.chatalyst.backend.dto.UpdateBotRequest;
 import com.chatalyst.backend.dto.BotStats;
 import com.chatalyst.backend.dto.CreateBotRequest;
 import com.chatalyst.backend.model.Bot;
@@ -171,6 +172,40 @@ public class BotService {
         } catch (Exception e) {
             throw new RuntimeException("Ошибка при установке Webhook для бота " + botIdentifier + ": " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Обновляет данные существующего бота.
+     * @param botId ID бота для обновления.
+     * @param userId ID пользователя, который пытается обновить бота.
+     * @param updateBotRequest DTO с данными для обновления.
+     * @return Обновленный объект бота.
+     * @throws RuntimeException если бот не найден или пользователь не является его владельцем.
+     */
+    @Transactional
+    public Bot updateBot(Long botId, Long userId, UpdateBotRequest updateBotRequest) {
+        // 1. Находим бота по его ID
+        Bot existingBot = botRepository.findById(botId)
+                .orElseThrow(() -> new RuntimeException("Бот не найден с ID: " + botId));
+
+        // 2. Добавлена более надёжная проверка, что текущий пользователь является владельцем этого бота
+        if (existingBot.getOwner() == null || !existingBot.getOwner().getId().equals(userId)) {
+            throw new RuntimeException("У вас нет прав для обновления этого бота.");
+        }
+
+        // 3. Обновляем поля, если они переданы в запросе
+        if (updateBotRequest.getName() != null && !updateBotRequest.getName().isBlank()) {
+            existingBot.setName(updateBotRequest.getName());
+        }
+        if (updateBotRequest.getDescription() != null) {
+            existingBot.setDescription(updateBotRequest.getDescription());
+        }
+        if (updateBotRequest.getShopName() != null) {
+            existingBot.setShopName(updateBotRequest.getShopName());
+        }
+
+        // 4. Сохраняем обновленный объект в базу данных
+        return botRepository.save(existingBot);
     }
 
     /**
