@@ -174,74 +174,68 @@ public class TelegramService {
         sendMessage(chatId, messageBuilder.toString(), bot.getAccessToken());
     }
 
-    /**
-     * Отправляет сообщение пользователя в AI для обработки.
-     * @param botIdentifier Идентификатор бота.
-     * @param chatId ID чата.
-     * @param userMessage Сообщение пользователя.
-     */
-    private void sendOpenAIResponse(String botIdentifier, long chatId, String userMessage) {
-        Optional<Bot> botOptional = botRepository.findByBotIdentifier(botIdentifier);
-        if (botOptional.isEmpty()) {
-            sendMessage(chatId, "Бот с таким идентификатором не найден.", defaultBotToken);
-            return;
-        }
-        Bot bot = botOptional.get();
-
-        // 1. Получаем историю диалога
-        List<ChatMessage> history = chatMessageRepository.findTop30ByChatIdAndBotIdentifierOrderByIdDesc(chatId, botIdentifier);
-
-        // 2. Формируем список истории для AI.
-        List<String[]> chatHistory = history.stream()
-                .map(m -> new String[]{m.getRole(), m.getContent()})
-                .collect(Collectors.toList());
-
-        // Добавляем текущее сообщение пользователя в конец истории
-        chatHistory.add(new String[]{"user", userMessage});
-
-        // 3. Формируем информацию о товарах для AI
-        String productCatalogInfo = productRepository.findByBot(bot).stream()
-                .collect(Collectors.groupingBy(Product::getCatalog))
-                .entrySet().stream()
-                .map(entry -> {
-                    String catalog = entry.getKey();
-                    return "Каталог: " + catalog + "\n" +
-                            entry.getValue().stream()
-                                    .collect(Collectors.groupingBy(Product::getSubcategory))
-                                    .entrySet().stream()
-                                    .map(subEntry -> {
-                                        String subcategory = subEntry.getKey();
-                                        String products = subEntry.getValue().stream()
-                                                .map(p -> "- " + p.getName() + " (" + p.getPrice() + " руб.): " + p.getDescription())
-                                                .collect(Collectors.joining("\n"));
-                                        return "  Подкаталог: " + subcategory + "\n" + products;
-                                    }).collect(Collectors.joining("\n"));
-                }).collect(Collectors.joining("\n\n"));
-
-        // 4. Получаем ответ от AI
-        String aiResponse = openAIService.getBotResponse(chatHistory, productCatalogInfo, bot.getShopName());
-
-        // 5. Сохраняем новое сообщение в историю
-        ChatMessage userMsg = ChatMessage.builder()
-                .chatId(chatId)
-                .botIdentifier(botIdentifier)
-                .role("user")
-                .content(userMessage)
-                .build();
-
-        ChatMessage aiMsg = ChatMessage.builder()
-                .chatId(chatId)
-                .botIdentifier(botIdentifier)
-                .role("assistant")
-                .content(aiResponse)
-                .build();
-
-        chatMessageRepository.save(userMsg);
-        chatMessageRepository.save(aiMsg);
-
-        // 6. Отправляем ответ
-        sendMessage(chatId, aiResponse, bot.getAccessToken());
+private void sendOpenAIResponse(String botIdentifier, long chatId, String userMessage) {
+    Optional<Bot> botOptional = botRepository.findByBotIdentifier(botIdentifier);
+    if (botOptional.isEmpty()) {
+        sendMessage(chatId, "Бот с таким идентификатором не найден.", defaultBotToken);
+        return;
     }
+    Bot bot = botOptional.get();
+
+    // 1. Получаем историю диалога
+    List<ChatMessage> history = chatMessageRepository.findTop30ByChatIdAndBotIdentifierOrderByIdDesc(chatId, botIdentifier);
+
+    // 2. Формируем список истории для AI.
+    List<String[]> chatHistory = history.stream()
+            .map(m -> new String[]{m.getRole(), m.getContent()})
+            .collect(Collectors.toList());
+
+    // Добавляем текущее сообщение пользователя в конец истории
+    chatHistory.add(new String[]{"user", userMessage});
+
+    // 3. Формируем информацию о товарах для AI
+    String productCatalogInfo = productRepository.findByBot(bot).stream()
+            .collect(Collectors.groupingBy(Product::getCatalog))
+            .entrySet().stream()
+            .map(entry -> {
+                String catalog = entry.getKey();
+                return "Каталог: " + catalog + "\n" +
+                        entry.getValue().stream()
+                                .collect(Collectors.groupingBy(Product::getSubcategory))
+                                .entrySet().stream()
+                                .map(subEntry -> {
+                                    String subcategory = subEntry.getKey();
+                                    String products = subEntry.getValue().stream()
+                                            .map(p -> "- " + p.getName() + " (" + p.getPrice() + " руб.): " + p.getDescription())
+                                            .collect(Collectors.joining("\n"));
+                                    return "  Подкаталог: " + subcategory + "\n" + products;
+                                }).collect(Collectors.joining("\n"));
+            }).collect(Collectors.joining("\n\n"));
+
+    // 4. Получаем ответ от AI, теперь передавая botIdentifier и chatId
+    String aiResponse = openAIService.getBotResponse(chatHistory, productCatalogInfo, bot.getShopName(), botIdentifier, chatId);
+
+    // 5. Сохраняем новое сообщение в историю
+    ChatMessage userMsg = ChatMessage.builder()
+            .chatId(chatId)
+            .botIdentifier(botIdentifier)
+            .role("user")
+            .content(userMessage)
+            .build();
+
+    ChatMessage aiMsg = ChatMessage.builder()
+            .chatId(chatId)
+            .botIdentifier(botIdentifier)
+            .role("assistant")
+            .content(aiResponse)
+            .build();
+
+    chatMessageRepository.save(userMsg);
+    chatMessageRepository.save(aiMsg);
+
+    // 6. Отправляем ответ
+    sendMessage(chatId, aiResponse, bot.getAccessToken());
+}
 
     /**
      * Sends a text message to a specific Telegram chat using a designated bot token.
