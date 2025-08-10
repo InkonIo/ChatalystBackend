@@ -5,9 +5,11 @@ import com.chatalyst.backend.dto.CreateProductRequest;
 import com.chatalyst.backend.dto.MessageResponse;
 import com.chatalyst.backend.dto.ProductResponse;
 import com.chatalyst.backend.dto.UpdateProductRequest;
+import com.chatalyst.backend.dto.ExcelImportResponse;
 import com.chatalyst.backend.security.services.ProductService;
 import com.chatalyst.backend.security.services.UserPrincipal;
 import com.chatalyst.backend.security.services.PsObjectStorageService; // Изменено: используем PsObjectStorageService
+import com.chatalyst.backend.security.services.ExcelProductImportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -36,6 +38,7 @@ public class ProductController {
 
     private final ProductService productService;
     private final PsObjectStorageService psObjectStorageService; // Изменено: используем PsObjectStorageService
+    private final ExcelProductImportService excelProductImportService;
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole(\'USER\') or hasRole(\'ADMIN\')")
@@ -367,6 +370,72 @@ public class ProductController {
             log.error("Ошибка удаления изображения: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new MessageResponse("Ошибка удаления изображения: " + e.getMessage()));
+        }
+    }
+
+    // Новый эндпоинт для импорта товаров из Excel файла
+    @PostMapping(value = "/import/excel", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole(\'USER\') or hasRole(\'ADMIN\')")
+    @Operation(summary = "Импорт товаров из Excel файла", 
+               description = "Загружает Excel файл с товарами и автоматически создает товары с помощью OpenAI для обработки данных.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Товары успешно импортированы",
+                    content = @Content(schema = @Schema(implementation = ExcelImportResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Ошибка при импорте товаров",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Неавторизованный доступ",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Бот не найден",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class)))
+    })
+    public ResponseEntity<?> importProductsFromExcel(
+            @RequestParam("file") MultipartFile excelFile,
+            @RequestParam("botId") Long botId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        
+        try {
+            // Проверяем, что файл является Excel файлом
+            String filename = excelFile.getOriginalFilename();
+            if (filename == null || (!filename.endsWith(".xlsx") && !filename.endsWith(".xls"))) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new MessageResponse("Файл должен быть в формате Excel (.xlsx или .xls)"));
+            }
+
+            // Проверяем размер файла (максимум 10MB)
+            if (excelFile.getSize() > 10 * 1024 * 1024) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new MessageResponse("Размер файла не должен превышать 10MB"));
+            }
+
+            log.info("Начинается импорт товаров из Excel файла '{}' для бота ID {} пользователем {}", 
+                    filename, botId, userPrincipal.getEmail());
+
+            // Импортируем товары
+            List<ProductResponse> createdProducts = excelProductImportService.importProductsFromExcel(
+                    excelFile, botId, userPrincipal.getId());
+
+            // Формируем ответ
+            ExcelImportResponse response = new ExcelImportResponse();
+            response.setTotalProcessed(createdProducts.size());
+            response.setSuccessfullyCreated(createdProducts.size());
+            response.setFailed(0);
+            response.setCreatedProducts(createdProducts);
+            response.setMessage("Импорт завершен успешно. Создано товаров: " + createdProducts.size());
+
+            log.info("Импорт товаров завершен успешно. Создано товаров: {} для бота ID {}", 
+                    createdProducts.size(), botId);
+
+            return ResponseEntity.ok(response);
+            
+        } catch (RuntimeException e) {
+            log.error("Ошибка при импорте товаров для пользователя {}: {}", userPrincipal.getEmail(), e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new MessageResponse("Ошибка при импорте товаров: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("Неожиданная ошибка при импорте товаров для пользователя {}: {}", 
+                     userPrincipal.getEmail(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new MessageResponse("Внутренняя ошибка сервера при импорте товаров"));
         }
     }
 }
