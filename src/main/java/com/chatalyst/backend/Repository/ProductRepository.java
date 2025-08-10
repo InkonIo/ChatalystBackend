@@ -29,6 +29,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     Optional<Product> findByNameAndBotAndInStock(String name, Bot bot, boolean inStock);
 
     List<Product> findByBotAndCatalog(Bot bot, String catalog);
+
+    List<Product> findByBotAndCatalogAndSubcategory(Bot bot, String catalog, String subcategory);
     
     // Получить список уникальных каталогов, привязанных к боту.
     // Для получения уникальных значений используется @Query с оператором DISTINCT.

@@ -131,6 +131,81 @@ public class ProductService {
         log.info("Товар удален: {} (ID: {})", product.getName(), productId);
     }
 
+    // ========================================================================
+    // НОВЫЕ МЕТОДЫ ДЛЯ УДАЛЕНИЯ КАТАЛОГОВ И ПОДКАТЕГОРИЙ
+    // ========================================================================
+    
+    /**
+     * Удаляет все товары, принадлежащие указанному боту и каталогу.
+     * @param botId ID бота.
+     * @param catalog Название каталога.
+     * @param userId ID пользователя для проверки прав.
+     * @return Количество удаленных товаров.
+     */
+    @Transactional
+    public long deleteProductsByBotAndCatalog(Long botId, String catalog, Long userId) {
+        Bot bot = botRepository.findById(botId)
+                .orElseThrow(() -> new RuntimeException("Бот не найден с ID: " + botId));
+
+        if (!bot.getOwner().getId().equals(userId)) {
+            throw new RuntimeException("У вас нет прав для удаления товаров этого бота.");
+        }
+
+        List<Product> productsToDelete = productRepository.findByBotAndCatalog(bot, catalog);
+
+        // Сначала удаляем изображения
+        productsToDelete.forEach(product -> {
+            String imageUrl = product.getImageUrl();
+            if (imageUrl != null && !imageUrl.isEmpty()) {
+                psObjectStorageService.deleteImage(imageUrl);
+                log.info("Изображение товара удалено из хранилища: {}", imageUrl);
+            }
+        });
+
+        // Затем удаляем сами товары
+        productRepository.deleteAll(productsToDelete);
+        log.info("Удалено {} товаров из каталога '{}' для бота ID {}", productsToDelete.size(), catalog, botId);
+
+        return productsToDelete.size();
+    }
+
+    /**
+     * Удаляет все товары, принадлежащие указанному боту, каталогу и подкатегории.
+     * @param botId ID бота.
+     * @param catalog Название каталога.
+     * @param subcategory Название подкатегории.
+     * @param userId ID пользователя для проверки прав.
+     * @return Количество удаленных товаров.
+     */
+    @Transactional
+    public long deleteProductsByBotAndSubcategory(Long botId, String catalog, String subcategory, Long userId) {
+        Bot bot = botRepository.findById(botId)
+                .orElseThrow(() -> new RuntimeException("Бот не найден с ID: " + botId));
+
+        if (!bot.getOwner().getId().equals(userId)) {
+            throw new RuntimeException("У вас нет прав для удаления товаров этого бота.");
+        }
+
+        List<Product> productsToDelete = productRepository.findByBotAndCatalogAndSubcategory(bot, catalog, subcategory);
+        
+        // Сначала удаляем изображения
+        productsToDelete.forEach(product -> {
+            String imageUrl = product.getImageUrl();
+            if (imageUrl != null && !imageUrl.isEmpty()) {
+                psObjectStorageService.deleteImage(imageUrl);
+                log.info("Изображение товара удалено из хранилища: {}", imageUrl);
+            }
+        });
+        
+        // Затем удаляем сами товары
+        productRepository.deleteAll(productsToDelete);
+        log.info("Удалено {} товаров из подкатегории '{}' в каталоге '{}' для бота ID {}", 
+                productsToDelete.size(), subcategory, catalog, botId);
+
+        return productsToDelete.size();
+    }
+
+
     /**
      * Получает товар по ID.
      * @param productId ID товара.

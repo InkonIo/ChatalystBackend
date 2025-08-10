@@ -233,6 +233,62 @@ public class ProductController {
         }
     }
 
+    // ========================================================================
+    // НОВЫЕ МЕТОДЫ ДЛЯ УДАЛЕНИЯ КАТАЛОГОВ И ПОДКАТЕГОРИЙ
+    // ========================================================================
+
+    @DeleteMapping("/bot/{botId}/catalogs/{catalog}")
+    @PreAuthorize("hasRole(\'USER\') or hasRole(\'ADMIN\')")
+    @Operation(summary = "Удалить каталог и все его товары", 
+               description = "Удаляет все товары для указанного бота и каталога. Возвращает количество удаленных товаров.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Товары успешно удалены",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Неавторизованный доступ"),
+            @ApiResponse(responseCode = "404", description = "Бот или каталог не найден",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class)))
+    })
+    public ResponseEntity<?> deleteCatalogByBot(
+            @PathVariable Long botId,
+            @PathVariable String catalog,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        try {
+            long deletedCount = productService.deleteProductsByBotAndCatalog(botId, catalog, userPrincipal.getId());
+            return ResponseEntity.ok(new MessageResponse("Удалено товаров: " + deletedCount + " в каталоге: " + catalog));
+        } catch (RuntimeException e) {
+            log.error("Ошибка при удалении каталога '{}' для бота ID {} пользователем {}: {}", 
+                    catalog, botId, userPrincipal.getEmail(), e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new MessageResponse("Ошибка: " + e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/bot/{botId}/catalogs/{catalog}/subcategories/{subcategory}")
+    @PreAuthorize("hasRole(\'USER\') or hasRole(\'ADMIN\')")
+    @Operation(summary = "Удалить подкатегорию и все ее товары", 
+               description = "Удаляет все товары для указанного бота, каталога и подкатегории. Возвращает количество удаленных товаров.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Товары успешно удалены",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Неавторизованный доступ"),
+            @ApiResponse(responseCode = "404", description = "Бот, каталог или подкатегория не найдены",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class)))
+    })
+    public ResponseEntity<?> deleteSubcategoryByBotAndCatalog(
+            @PathVariable Long botId,
+            @PathVariable String catalog,
+            @PathVariable String subcategory,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        try {
+            long deletedCount = productService.deleteProductsByBotAndSubcategory(botId, catalog, subcategory, userPrincipal.getId());
+            return ResponseEntity.ok(new MessageResponse("Удалено товаров: " + deletedCount + " в подкатегории: " + subcategory));
+        } catch (RuntimeException e) {
+            log.error("Ошибка при удалении подкатегории '{}' в каталоге '{}' для бота ID {} пользователем {}: {}", 
+                    subcategory, catalog, botId, userPrincipal.getEmail(), e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new MessageResponse("Ошибка: " + e.getMessage()));
+        }
+    }
+
+
     @GetMapping("/{id}")
     @PreAuthorize("hasRole(\'USER\') or hasRole(\'ADMIN\')")
     @Operation(summary = "Получить товар по ID", description = "Возвращает информацию о товаре по его ID.")
@@ -439,5 +495,3 @@ public class ProductController {
         }
     }
 }
-
-
