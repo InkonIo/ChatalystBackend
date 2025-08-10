@@ -174,7 +174,7 @@ public class TelegramService {
 
         // Отправляем каждый товар отдельным сообщением с изображением (если есть)
         for (Product product : products) {
-            String productInfo = String.format("📦 %s\n💰 %s руб.\n📝 %s", 
+            String productInfo = String.format("📦 %s\n💰 %s тг.\n📝 %s", 
                     product.getName(), 
                     product.getPrice(), 
                     product.getDescription() != null ? product.getDescription() : "Описание отсутствует");
@@ -225,7 +225,7 @@ public class TelegramService {
                                         String subcategory = subEntry.getKey();
                                         String products = subEntry.getValue().stream()
                                                 .map(p -> {
-                                                    String productInfo = "- " + p.getName() + " (" + p.getPrice() + " руб.): " + p.getDescription();
+                                                    String productInfo = "- " + p.getName() + " (" + p.getPrice() + " тг.): " + p.getDescription();
                                                     if (p.getImageUrl() != null && !p.getImageUrl().isEmpty()) {
                                                         productInfo += " [ИЗОБРАЖЕНИЕ: " + p.getImageUrl() + "]";
                                                     }
@@ -279,7 +279,7 @@ public class TelegramService {
             if (aiResponse.toLowerCase().contains(product.getName().toLowerCase()) && 
                 product.getImageUrl() != null && !product.getImageUrl().isEmpty()) {
                 
-                String productCaption = String.format("📦 %s\n💰 %s руб.\n📝 %s", 
+                String productCaption = String.format("📦 %s\n💰 %s тг.\n📝 %s", 
                         product.getName(), 
                         product.getPrice(), 
                         product.getDescription() != null ? product.getDescription() : "");

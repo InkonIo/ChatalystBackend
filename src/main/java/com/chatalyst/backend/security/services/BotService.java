@@ -27,6 +27,9 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 import java.util.Optional;
 
+import com.chatalyst.backend.security.services.ProductService;
+import com.chatalyst.backend.dto.ProductResponse;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -38,6 +41,8 @@ public class BotService {
     @Qualifier("telegramWebClient")
     private final WebClient telegramWebClient;
     private final ChatMessageRepository chatMessageRepository;
+    private final ProductService productService;
+    private final PsObjectStorageService psObjectStorageService;
 
     @Value("${telegram.webhook.base-url}")
     private String telegramWebhookBaseUrl;
@@ -243,6 +248,17 @@ public class BotService {
             throw new RuntimeException("У вас нет прав для удаления этого бота.");
         }
         
+                // Удаляем все продукты, связанные с ботом, и их изображения
+        List<ProductResponse> productsToDelete = productService.getProductsByBotId(botId, userId);
+        for (ProductResponse product : productsToDelete) {
+            if (product.getImageUrl() != null && !product.getImageUrl().isEmpty()) {
+                psObjectStorageService.deleteImage(product.getImageUrl());
+                log.info("Изображение {} удалено для продукта ID {}", product.getImageUrl(), product.getId());
+            }
+            productService.deleteProduct(product.getId(), userId);
+            log.info("Продукт ID {} удален.", product.getId());
+        }
+
         // ИЗМЕНЕНИЕ: Удаляем Webhook из Telegram перед удалением бота из БД
         deleteTelegramWebhook(bot.getAccessToken());
 
