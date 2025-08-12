@@ -175,25 +175,110 @@ public class BotController {
         }
     }
 
-        @GetMapping("/stats/{botId}")
-@PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
-@Operation(summary = "Получить статистику по боту", description = "Возвращает общее количество сообщений и диалогов для указанного бота. Доступно только владельцу бота.")
-@ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Статистика успешно получена",
-                content = @Content(schema = @Schema(implementation = BotStats.class))),
-        @ApiResponse(responseCode = "400", description = "Ошибка, бот не найден или нет прав доступа",
-                content = @Content(schema = @Schema(implementation = MessageResponse.class))),
-        @ApiResponse(responseCode = "401", description = "Неавторизованный доступ",
-                content = @Content(schema = @Schema(implementation = MessageResponse.class)))
-})
-public ResponseEntity<?> getBotStatistics(@PathVariable Long botId,
-                                           @AuthenticationPrincipal UserPrincipal userPrincipal) {
-    try {
-        BotStats stats = botService.getBotStatistics(botId, userPrincipal.getId());
-        return ResponseEntity.ok(stats);
-    } catch (RuntimeException e) {
-        log.error("Ошибка при получении статистики для бота {}: {}", botId, e.getMessage());
-        return ResponseEntity.badRequest().body(new MessageResponse("Ошибка: " + e.getMessage()));
+    @GetMapping("/stats/{botId}")
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @Operation(summary = "Получить статистику по боту", description = "Возвращает общее количество сообщений и диалогов для указанного бота. Доступно только владельцу бота.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Статистика успешно получена",
+                    content = @Content(schema = @Schema(implementation = BotStats.class))),
+            @ApiResponse(responseCode = "400", description = "Ошибка, бот не найден или нет прав доступа",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Неавторизованный доступ",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class)))
+    })
+    public ResponseEntity<?> getBotStatistics(@PathVariable Long botId,
+                                               @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        try {
+            BotStats stats = botService.getBotStatistics(botId, userPrincipal.getId());
+            return ResponseEntity.ok(stats);
+        } catch (RuntimeException e) {
+            log.error("Ошибка при получении статистики для бота {}: {}", botId, e.getMessage());
+            return ResponseEntity.badRequest().body(new MessageResponse("Ошибка: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Активирует webhook для бота.
+     * @param botId ID бота для активации webhook.
+     * @param userPrincipal Информация об авторизованном пользователе.
+     * @return ResponseEntity с сообщением об успехе или ошибке.
+     */
+    @PostMapping("/{botId}/webhook/activate")
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @Operation(summary = "Активировать webhook бота", description = "Активирует webhook для указанного бота. Доступно только владельцу бота.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Webhook успешно активирован",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Ошибка активации webhook",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Неавторизованный доступ",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class)))
+    })
+    public ResponseEntity<?> activateWebhook(@PathVariable Long botId,
+                                             @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        try {
+            botService.activateWebhook(botId, userPrincipal.getId());
+            return ResponseEntity.ok(new MessageResponse("Webhook успешно активирован!"));
+        } catch (RuntimeException e) {
+            log.error("Ошибка при активации webhook для бота {}: {}", botId, e.getMessage());
+            return ResponseEntity.badRequest().body(new MessageResponse("Ошибка: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Деактивирует webhook для бота.
+     * @param botId ID бота для деактивации webhook.
+     * @param userPrincipal Информация об авторизованном пользователе.
+     * @return ResponseEntity с сообщением об успехе или ошибке.
+     */
+    @PostMapping("/{botId}/webhook/deactivate")
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @Operation(summary = "Деактивировать webhook бота", description = "Деактивирует webhook для указанного бота. Доступно только владельцу бота.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Webhook успешно деактивирован",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Ошибка деактивации webhook",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Неавторизованный доступ",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class)))
+    })
+    public ResponseEntity<?> deactivateWebhook(@PathVariable Long botId,
+                                               @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        try {
+            botService.deactivateWebhook(botId, userPrincipal.getId());
+            return ResponseEntity.ok(new MessageResponse("Webhook успешно деактивирован!"));
+        } catch (RuntimeException e) {
+            log.error("Ошибка при деактивации webhook для бота {}: {}", botId, e.getMessage());
+            return ResponseEntity.badRequest().body(new MessageResponse("Ошибка: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Получает статус webhook для бота.
+     * @param botId ID бота для проверки статуса webhook.
+     * @param userPrincipal Информация об авторизованном пользователе.
+     * @return ResponseEntity с информацией о статусе webhook.
+     */
+    @GetMapping("/{botId}/webhook/status")
+    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @Operation(summary = "Получить статус webhook бота", description = "Возвращает текущий статус webhook для указанного бота. Доступно только владельцу бота.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Статус webhook успешно получен",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Ошибка получения статуса webhook",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Неавторизованный доступ",
+                    content = @Content(schema = @Schema(implementation = MessageResponse.class)))
+    })
+    public ResponseEntity<?> getWebhookStatus(@PathVariable Long botId,
+                                              @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        try {
+            String status = botService.getWebhookStatus(botId, userPrincipal.getId());
+            return ResponseEntity.ok(new MessageResponse(status));
+        } catch (RuntimeException e) {
+            log.error("Ошибка при получении статуса webhook для бота {}: {}", botId, e.getMessage());
+            return ResponseEntity.badRequest().body(new MessageResponse("Ошибка: " + e.getMessage()));
+        }
     }
 }
-}       
+

@@ -324,4 +324,102 @@ public class BotService {
     bot.setShopName(shopName);
     botRepository.save(bot);
 }
+
+    /**
+     * Активирует webhook для бота.
+     * @param botId ID бота.
+     * @param userId ID пользователя (для проверки прав).
+     * @throws RuntimeException если бот не найден или пользователь не является владельцем.
+     */
+    @Transactional
+    public void activateWebhook(Long botId, Long userId) {
+        Bot bot = botRepository.findById(botId)
+                .orElseThrow(() -> new RuntimeException("Бот не найден с ID: " + botId));
+
+        if (!bot.getOwner().getId().equals(userId)) {
+            throw new RuntimeException("У вас нет прав для управления этим ботом.");
+        }
+
+        // Устанавливаем webhook
+        setTelegramWebhook(bot.getAccessToken(), bot.getBotIdentifier());
+        log.info("Webhook активирован для бота {} (ID: {})", bot.getBotIdentifier(), botId);
+    }
+
+    /**
+     * Деактивирует webhook для бота.
+     * @param botId ID бота.
+     * @param userId ID пользователя (для проверки прав).
+     * @throws RuntimeException если бот не найден или пользователь не является владельцем.
+     */
+    @Transactional
+    public void deactivateWebhook(Long botId, Long userId) {
+        Bot bot = botRepository.findById(botId)
+                .orElseThrow(() -> new RuntimeException("Бот не найден с ID: " + botId));
+
+        if (!bot.getOwner().getId().equals(userId)) {
+            throw new RuntimeException("У вас нет прав для управления этим ботом.");
+        }
+
+        // Удаляем webhook
+        deleteTelegramWebhook(bot.getAccessToken());
+        log.info("Webhook деактивирован для бота {} (ID: {})", bot.getBotIdentifier(), botId);
+    }
+
+    /**
+     * Получает статус webhook для бота.
+     * @param botId ID бота.
+     * @param userId ID пользователя (для проверки прав).
+     * @return Строка с информацией о статусе webhook.
+     * @throws RuntimeException если бот не найден или пользователь не является владельцем.
+     */
+    public String getWebhookStatus(Long botId, Long userId) {
+        Bot bot = botRepository.findById(botId)
+                .orElseThrow(() -> new RuntimeException("Бот не найден с ID: " + botId));
+
+        if (!bot.getOwner().getId().equals(userId)) {
+            throw new RuntimeException("У вас нет прав для доступа к информации об этом боте.");
+        }
+
+        try {
+            Mono<String> responseMono = telegramWebClient.get()
+                    .uri(String.format("/bot%s/getWebhookInfo", bot.getAccessToken()))
+                    .retrieve()
+                    .bodyToMono(String.class);
+
+            String responseString = responseMono.block();
+            JsonNode rootNode = objectMapper.readTree(responseString);
+
+            if (!rootNode.path("ok").asBoolean()) {
+                return "Ошибка получения информации о webhook: " + rootNode.path("description").asText();
+            }
+
+            JsonNode result = rootNode.path("result");
+            String url = result.path("url").asText();
+            boolean hasCustomCertificate = result.path("has_custom_certificate").asBoolean();
+            int pendingUpdateCount = result.path("pending_update_count").asInt();
+            String lastErrorDate = result.path("last_error_date").asText();
+            String lastErrorMessage = result.path("last_error_message").asText();
+
+            StringBuilder status = new StringBuilder();
+            if (url.isEmpty()) {
+                status.append("Webhook не установлен");
+            } else {
+                status.append("Webhook активен: ").append(url);
+                status.append("\nОжидающих обновлений: ").append(pendingUpdateCount);
+                if (hasCustomCertificate) {
+                    status.append("\nИспользуется пользовательский сертификат");
+                }
+                if (!lastErrorDate.isEmpty() && !lastErrorMessage.isEmpty()) {
+                    status.append("\nПоследняя ошибка: ").append(lastErrorMessage);
+                }
+            }
+
+            return status.toString();
+
+        } catch (Exception e) {
+            log.error("Ошибка при получении статуса webhook для бота {}: {}", botId, e.getMessage(), e);
+            return "Ошибка при получении статуса webhook: " + e.getMessage();
+        }
+    }
 }
+
