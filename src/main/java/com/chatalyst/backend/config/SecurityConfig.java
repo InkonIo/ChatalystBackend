@@ -64,17 +64,23 @@ public class SecurityConfig {
                 .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> 
-                    auth.requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/webhook/telegram").permitAll()
-                        .requestMatchers("/telegram/webhook/**").permitAll()
-                        .requestMatchers("/api/telegram/webhook/**").permitAll()
-                        .requestMatchers("/api/telegram/webhook/**").permitAll() // ИЗМЕНЕНО: Разрешить доступ ко всем путям под /api/telegram/webhook/
-                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/api-docs/**").permitAll()
-                        .requestMatchers("/api/token-usage/**").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()
-                        .requestMatchers("/error").permitAll()
-                        .anyRequest().authenticated()
+                    auth.requestMatchers(
+                        "/api/auth/**",
+                        "/webhook/telegram",
+                        "/telegram/webhook/**",
+                        "/api/telegram/webhook/**",
+                        "/swagger-ui/**",
+                        "/swagger-ui.html",
+                        "/v3/api-docs/**",
+                        "/api-docs/**",
+                        "/api/token-usage/**",
+                        "/h2-console/**",
+                        "/error",
+                        "/"
+                    ).permitAll()
+                    .anyRequest().authenticated()
                 );
+
         
         http.authenticationProvider(authenticationProvider());
         http.addFilterBefore(authTokenFilter, UsernamePasswordAuthenticationFilter.class);
